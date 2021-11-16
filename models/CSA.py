@@ -2,7 +2,6 @@ import torch
 from collections import OrderedDict
 from torch.autograd import Variable
 
-import torch.nn.functional as F
 from .base_model import BaseModel
 from . import networks
 from .vgg16 import Vgg16
@@ -24,7 +23,7 @@ class CSA(BaseModel):
         self.input_B = self.Tensor(opt.batchSize, opt.output_nc,
                                    opt.fineSize, opt.fineSize)
 
-        # batchsize should be 1 for mask_global - Gdzie ustawiamy, aby maska była randomowa?
+        # batchsize should be 1 for mask_global
         self.mask_global = torch.ByteTensor(1, 1, opt.fineSize, opt.fineSize)
 
         self.mask_global.zero_()
@@ -81,7 +80,7 @@ class CSA(BaseModel):
         if self.isTrain:
             # Load learning rate
             self.old_lr = opt.lr
-            # define loss functions
+            # define loss functions: GAN losses and L1 loss
             self.criterionGAN = networks.GANLoss(gan_type=opt.gan_type, tensor=self.Tensor)
             self.criterionL1 = torch.nn.L1Loss()
 
@@ -114,8 +113,10 @@ class CSA(BaseModel):
 
     def set_input(self, input, mask):
 
+        # input_A - original image
         input_A = input
         input_B = input.clone()
+        # input_mask - mask
         input_mask = mask
 
         self.input_A.resize_(input_A.size()).copy_(input_A)
@@ -128,12 +129,14 @@ class CSA(BaseModel):
 
         elif self.opt.mask_type == 'random':
             self.mask_global.zero_()
+            # Here we set mask as random mask
             self.mask_global = input_mask
         else:
             raise ValueError("Mask_type [%s] not recognized." % self.opt.mask_type)
 
         self.ex_mask = self.mask_global.expand(1, 3, self.mask_global.size(2), self.mask_global.size(3))  # 1*c*h*w
 
+        # Here we apply a mask to the original image
         self.inv_ex_mask = torch.add(torch.neg(self.ex_mask.float()), 1).byte()
         self.input_A.narrow(1, 0, 1).masked_fill_(self.mask_global, 2 * 123.0 / 255.0 - 1.0)
         self.input_A.narrow(1, 1, 1).masked_fill_(self.mask_global, 2 * 104.0 / 255.0 - 1.0)
@@ -175,8 +178,10 @@ class CSA(BaseModel):
         self.real_B = self.input_B.to(self.device)
 
     def backward_D(self):
+        # self.fake_B - output from Generator
         fake_AB = self.fake_B
         # Real
+        # Feature map extraction from images reconstructed using vgg networks
         self.gt_latent_fake = self.vgg(Variable(self.fake_B.data, requires_grad=False))
         self.gt_latent_real = self.vgg(Variable(self.input_B, requires_grad=False))
         real_AB = self.real_B  # GroundTruth
@@ -225,6 +230,7 @@ class CSA(BaseModel):
             self.loss_G += self.ng_loss_value
             for gl in self.Cosis_list2:
                 # self.ng_loss_value += gl.backward()
+                # Variables are just wrappers for the tensors so you can now easily auto compute the gradients.
                 self.ng_loss_value2 += Variable(gl.loss.data, requires_grad=True)
             self.loss_G += self.ng_loss_value2
 

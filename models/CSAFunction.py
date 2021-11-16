@@ -1,7 +1,5 @@
-import torch
 from utils.NonparametricShift import NonparametricShift
 from utils.MaxCoord import MaxCoord
-import utils.utils as utils
 import torch.nn as nn
 import torch
 
@@ -63,7 +61,7 @@ class CSAFunction(torch.autograd.Function):
             out_new=out_new.zero_()
             mask_num=torch.sum(ctx.flag)
 
-            in_attention=ctx.Tensor (mask_num,real_patches).zero_()
+            in_attention=ctx.Tensor(mask_num,real_patches).zero_()
 
             kbar = ctx.Tensor(1, real_patches, kbar_h, kbar_w).zero_()
             ind_laten=0

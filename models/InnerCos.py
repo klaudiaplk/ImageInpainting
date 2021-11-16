@@ -8,6 +8,7 @@ class InnerCos(nn.Module):
     def __init__(self, crit='MSE', strength=1, skip=0):
         super(InnerCos, self).__init__()
         self.crit = crit
+        # L2 or L1 loss
         self.criterion = torch.nn.MSELoss() if self.crit == 'MSE' else torch.nn.L1Loss()
 
         self.strength = strength

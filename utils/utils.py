@@ -86,7 +86,7 @@ def cal_feat_mask(inMask, conv_layers, threshold):
         lnet = lnet.cuda()
     output = lnet(inMask)
     output = (output > threshold).float().mul_(1)
-    output=Variable(output, requires_grad=False)
+    output = Variable(output, requires_grad=False)
     return output.detach().byte()
 
 
