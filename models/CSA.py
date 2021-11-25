@@ -5,6 +5,7 @@ from torch.autograd import Variable
 from .base_model import BaseModel
 from . import networks
 from .vgg16 import Vgg16
+from utils.SSIM import SSIM
 
 
 class CSA(BaseModel):
@@ -24,7 +25,7 @@ class CSA(BaseModel):
                                    opt.fineSize, opt.fineSize)
 
         # batchsize should be 1 for mask_global
-        self.mask_global = torch.ByteTensor(1, 1, opt.fineSize, opt.fineSize)
+        self.mask_global = torch.BoolTensor(1, 1, opt.fineSize, opt.fineSize)
 
         self.mask_global.zero_()
         self.mask_global[:, :, int(self.opt.fineSize / 4) + self.opt.overlap: int(self.opt.fineSize / 2) + int(
@@ -83,6 +84,8 @@ class CSA(BaseModel):
             # define loss functions: GAN losses and L1 loss
             self.criterionGAN = networks.GANLoss(gan_type=opt.gan_type, tensor=self.Tensor)
             self.criterionL1 = torch.nn.L1Loss()
+            # Add new SSIM loss
+            self.criterionSSIM = SSIM()
 
             # initialize optimizers
             self.schedulers = []
@@ -137,7 +140,7 @@ class CSA(BaseModel):
         self.ex_mask = self.mask_global.expand(1, 3, self.mask_global.size(2), self.mask_global.size(3))  # 1*c*h*w
 
         # Here we apply a mask to the original image
-        self.inv_ex_mask = torch.add(torch.neg(self.ex_mask.float()), 1).byte()
+        self.inv_ex_mask = torch.add(torch.neg(self.ex_mask.float()), 1).bool()
         self.input_A.narrow(1, 0, 1).masked_fill_(self.mask_global, 2 * 123.0 / 255.0 - 1.0)
         self.input_A.narrow(1, 1, 1).masked_fill_(self.mask_global, 2 * 104.0 / 255.0 - 1.0)
         self.input_A.narrow(1, 2, 1).masked_fill_(self.mask_global, 2 * 117.0 / 255.0 - 1.0)
@@ -218,7 +221,14 @@ class CSA(BaseModel):
         self.loss_G_L1 = (self.criterionL1(self.fake_B, self.real_B) + self.criterionL1(self.fake_P,
                                                                                         self.real_B)) * self.opt.lambda_A
 
-        self.loss_G = self.loss_G_L1 + self.loss_G_GAN * self.opt.gan_weight
+        if self.opt.ssim_loss:
+            # Add new SSIM loss
+            self.loss_G_SSIM = ((1.0 - self.criterionSSIM(self.real_B, self.fake_B)) + (1.0 - self.criterionSSIM(self.real_B, self.fake_P))) / 2
+
+            self.loss_G = self.loss_G_L1 * self.opt.l1_weight + self.loss_G_GAN * self.opt.gan_weight + \
+                          self.loss_G_SSIM * self.opt.ssim_weight
+        else:
+            self.loss_G = self.loss_G_L1 + self.loss_G_GAN * self.opt.gan_weight
 
         # Third add additional netG contraint loss!
         self.ng_loss_value = 0
@@ -250,11 +260,19 @@ class CSA(BaseModel):
         self.optimizer_P.step()
 
     def get_current_errors(self):
-        return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
-                            ('G_L1', self.loss_G_L1.data.item()),
-                            ('D', self.loss_D_fake.data.item()),
-                            ('F', self.loss_F_fake.data.item())
-                            ])
+        if self.opt.ssim_loss:
+            return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
+                                ('G_L1', self.loss_G_L1.data.item()),
+                                ('G_SSIM', self.loss_G_SSIM.data.item()),
+                                ('D', self.loss_D_fake.data.item()),
+                                ('F', self.loss_F_fake.data.item())
+                                ])
+        else:
+            return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
+                                ('G_L1', self.loss_G_L1.data.item()),
+                                ('D', self.loss_D_fake.data.item()),
+                                ('F', self.loss_F_fake.data.item())
+                                ])
 
     def get_current_visuals(self):
 
