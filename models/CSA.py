@@ -226,7 +226,7 @@ class CSA(BaseModel):
             self.loss_G_SSIM = ((1.0 - self.criterionSSIM(self.real_B, self.fake_B)) + (1.0 - self.criterionSSIM(self.real_B, self.fake_P))) / 2
 
             self.loss_G = self.loss_G_L1 * self.opt.l1_weight + self.loss_G_GAN * self.opt.gan_weight + \
-                          self.loss_G_SSIM * self.opt.ssim_weight
+                          self.loss_G_SSIM * (1-self.opt.l1_weight)
         else:
             self.loss_G = self.loss_G_L1 + self.loss_G_GAN * self.opt.gan_weight
 
