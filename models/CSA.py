@@ -6,6 +6,7 @@ from .base_model import BaseModel
 from . import networks
 from .vgg16 import Vgg16
 from utils.SSIM import SSIM
+from utils.Lorentzian import lorentzian
 
 
 class CSA(BaseModel):
@@ -197,7 +198,12 @@ class CSA(BaseModel):
         self.pred_real_F = self.netF(self.gt_latent_real.relu3_3)
         self.loss_F_fake = self.criterionGAN(self.pred_fake_F, self.pred_real_F, True)
 
-        self.loss_D = self.loss_D_fake * 0.5 + self.loss_F_fake * 0.5
+        if self.opt.lorentzian_loss:
+            # Add new Lorentzian loss for Patch Discriminator
+            self.loss_D_lorentzian = torch.mean(torch.log(1.0 + torch.abs(self.pred_real - self.pred_fake)))
+            self.loss_D = (self.loss_D_fake + self.loss_D_lorentzian) * 0.5 + self.loss_F_fake * 0.5
+        else:
+            self.loss_D = self.loss_D_fake * 0.5 + self.loss_F_fake * 0.5
 
         # When two losses are ready, together backward.
         # It is op, so the backward will be called from a leaf.(quite different from LuaTorch)
@@ -216,13 +222,16 @@ class CSA(BaseModel):
 
         self.loss_G_GAN = self.criterionGAN(pred_fake, pred_real, False) + self.criterionGAN(pred_fake_f, pred_real_F,
                                                                                              False)
+        if self.opt.lorentzian_loss:
+            self.loss_G_lorentzian = torch.mean(torch.log(1.0 + torch.abs(self.real_B - self.fake_B)))
+            self.loss_G_GAN = self.loss_G_GAN + self.loss_G_lorentzian
 
         # Second, G(A) = B
         self.loss_G_L1 = (self.criterionL1(self.fake_B, self.real_B) + self.criterionL1(self.fake_P,
                                                                                         self.real_B)) * self.opt.lambda_A
 
         if self.opt.ssim_loss:
-            # Add new SSIM loss
+            # Add new SSIM loss - fake_P - from rought net, fake_B - from refinement net
             self.loss_G_SSIM = ((1.0 - self.criterionSSIM(self.real_B, self.fake_B)) + (1.0 - self.criterionSSIM(self.real_B, self.fake_P))) / 2
 
             self.loss_G = self.loss_G_L1 * self.opt.l1_weight + self.loss_G_GAN * self.opt.gan_weight + \
@@ -260,19 +269,36 @@ class CSA(BaseModel):
         self.optimizer_P.step()
 
     def get_current_errors(self):
-        if self.opt.ssim_loss:
-            return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
-                                ('G_L1', self.loss_G_L1.data.item()),
-                                ('G_SSIM', self.loss_G_SSIM.data.item()),
-                                ('D', self.loss_D_fake.data.item()),
-                                ('F', self.loss_F_fake.data.item())
-                                ])
+        if self.opt.lorentzian_loss:
+            if self.opt.ssim_loss:
+                return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
+                                    ('G_Lorentzian', self.loss_G_lorentzian.data.item()),
+                                    ('G_L1', self.loss_G_L1.data.item()),
+                                    ('G_SSIM', self.loss_G_SSIM.data.item()),
+                                    ('D', self.loss_D_fake.data.item()),
+                                    ('F', self.loss_F_fake.data.item())
+                                    ])
+            else:
+                return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
+                                    ('G_Lorentzian', self.loss_G_lorentzian.data.item()),
+                                    ('G_L1', self.loss_G_L1.data.item()),
+                                    ('D', self.loss_D_fake.data.item()),
+                                    ('F', self.loss_F_fake.data.item())
+                                    ])
         else:
-            return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
-                                ('G_L1', self.loss_G_L1.data.item()),
-                                ('D', self.loss_D_fake.data.item()),
-                                ('F', self.loss_F_fake.data.item())
-                                ])
+            if self.opt.ssim_loss:
+                return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
+                                    ('G_L1', self.loss_G_L1.data.item()),
+                                    ('G_SSIM', self.loss_G_SSIM.data.item()),
+                                    ('D', self.loss_D_fake.data.item()),
+                                    ('F', self.loss_F_fake.data.item())
+                                    ])
+            else:
+                return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
+                                    ('G_L1', self.loss_G_L1.data.item()),
+                                    ('D', self.loss_D_fake.data.item()),
+                                    ('F', self.loss_F_fake.data.item())
+                                    ])
 
     def get_current_visuals(self):
 
