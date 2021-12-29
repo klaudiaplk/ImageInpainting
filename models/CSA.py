@@ -202,6 +202,9 @@ class CSA(BaseModel):
             # Add new Lorentzian loss for Patch Discriminator
             self.loss_D_lorentzian = torch.mean(torch.log(1.0 + torch.abs(self.pred_real - self.pred_fake)))
             self.loss_D = (self.loss_D_fake + self.loss_D_lorentzian) * 0.5 + self.loss_F_fake * 0.5
+            # Add new Lorentzian loss for Feature Patch Discriminator
+            # self.loss_F_lorentzian = torch.mean(torch.log(1.0 + torch.abs(self.pred_real_F - self.pred_fake_F)))
+            # self.loss_D = self.loss_D_fake * 0.5 + (self.loss_F_fake + self.loss_F_lorentzian) * 0.5
         else:
             self.loss_D = self.loss_D_fake * 0.5 + self.loss_F_fake * 0.5
 
@@ -232,7 +235,7 @@ class CSA(BaseModel):
 
         if self.opt.ssim_loss:
             # Add new SSIM loss - fake_P - from rought net, fake_B - from refinement net
-            self.loss_G_SSIM = ((1.0 - self.criterionSSIM(self.real_B, self.fake_B)) + (1.0 - self.criterionSSIM(self.real_B, self.fake_P))) / 2
+            self.loss_G_SSIM = (((1.0 - self.criterionSSIM(self.real_B, self.fake_B)) + (1.0 - self.criterionSSIM(self.real_B, self.fake_P))) / 2) * self.opt.ssim_weight
 
             self.loss_G = self.loss_G_L1 * self.opt.l1_weight + self.loss_G_GAN * self.opt.gan_weight + \
                           self.loss_G_SSIM * (1-self.opt.l1_weight)
@@ -269,36 +272,19 @@ class CSA(BaseModel):
         self.optimizer_P.step()
 
     def get_current_errors(self):
+        errors = OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
+                              ('G_L1', self.loss_G_L1.data.item()),
+                              ('G_overall', self.loss_G.data.item()),
+                              ('D', self.loss_D_fake.data.item()),
+                              ('D_overall', self.loss_D.data.item()),
+                              ('F', self.loss_F_fake.data.item())
+                              ])
         if self.opt.lorentzian_loss:
-            if self.opt.ssim_loss:
-                return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
-                                    ('G_Lorentzian', self.loss_G_lorentzian.data.item()),
-                                    ('G_L1', self.loss_G_L1.data.item()),
-                                    ('G_SSIM', self.loss_G_SSIM.data.item()),
-                                    ('D', self.loss_D_fake.data.item()),
-                                    ('F', self.loss_F_fake.data.item())
-                                    ])
-            else:
-                return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
-                                    ('G_Lorentzian', self.loss_G_lorentzian.data.item()),
-                                    ('G_L1', self.loss_G_L1.data.item()),
-                                    ('D', self.loss_D_fake.data.item()),
-                                    ('F', self.loss_F_fake.data.item())
-                                    ])
-        else:
-            if self.opt.ssim_loss:
-                return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
-                                    ('G_L1', self.loss_G_L1.data.item()),
-                                    ('G_SSIM', self.loss_G_SSIM.data.item()),
-                                    ('D', self.loss_D_fake.data.item()),
-                                    ('F', self.loss_F_fake.data.item())
-                                    ])
-            else:
-                return OrderedDict([('G_GAN', self.loss_G_GAN.data.item()),
-                                    ('G_L1', self.loss_G_L1.data.item()),
-                                    ('D', self.loss_D_fake.data.item()),
-                                    ('F', self.loss_F_fake.data.item())
-                                    ])
+            errors['G_Lorentzian'] = self.loss_G_lorentzian.data.item()
+            errors['D_Lorentzian'] = self.loss_D_lorentzian.data.item()
+        if self.opt.ssim_loss:
+            errors['G_SSIM'] = self.loss_G_SSIM.data.item()
+        return errors
 
     def get_current_visuals(self):
 
@@ -317,5 +303,3 @@ class CSA(BaseModel):
     def load(self, epoch):
         self.load_network(self.netG, 'G', epoch)
         self.load_network(self.netP, 'P', epoch)
-
-
