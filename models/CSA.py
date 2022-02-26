@@ -6,8 +6,6 @@ from .base_model import BaseModel
 from . import networks
 from .vgg16 import Vgg16
 from utils.SSIM import SSIM
-from utils.Lorentzian import lorentzian
-
 
 class CSA(BaseModel):
     def name(self):
@@ -202,9 +200,6 @@ class CSA(BaseModel):
             # Add new Lorentzian loss for Patch Discriminator
             self.loss_D_lorentzian = torch.mean(torch.log(1.0 + torch.abs(self.pred_real - self.pred_fake)))
             self.loss_D = (self.loss_D_fake + self.loss_D_lorentzian) * 0.5 + self.loss_F_fake * 0.5
-            # Add new Lorentzian loss for Feature Patch Discriminator
-            # self.loss_F_lorentzian = torch.mean(torch.log(1.0 + torch.abs(self.pred_real_F - self.pred_fake_F)))
-            # self.loss_D = self.loss_D_fake * 0.5 + (self.loss_F_fake + self.loss_F_lorentzian) * 0.5
         else:
             self.loss_D = self.loss_D_fake * 0.5 + self.loss_F_fake * 0.5
 
@@ -226,7 +221,7 @@ class CSA(BaseModel):
         self.loss_G_GAN = self.criterionGAN(pred_fake, pred_real, False) + self.criterionGAN(pred_fake_f, pred_real_F,
                                                                                              False)
         if self.opt.lorentzian_loss:
-            self.loss_G_lorentzian = torch.mean(torch.log(1.0 + torch.abs(self.real_B - self.fake_B)))
+            self.loss_G_lorentzian = torch.mean(torch.log(1.0 + torch.abs(self.real_B - self.fake_B))) * self.opt.lorentzian_weight
             self.loss_G_GAN = self.loss_G_GAN + self.loss_G_lorentzian
 
         # Second, G(A) = B
